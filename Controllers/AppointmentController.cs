@@ -8,6 +8,9 @@ using Hospital.Helpers;
 using Hospital.Models.Operational;
 using Microsoft.VisualBasic;
 using System.Linq.Expressions;
+using AutoMapper.Configuration.Annotations;
+using System.Globalization;
+using Microsoft.OpenApi.Validations;
 
 namespace Hospital.Controllers
 {
@@ -53,6 +56,11 @@ namespace Hospital.Controllers
                     Id = d.Id,
                     AppointmentDate = d.AppointmentDate,
                     Status = d.Status,
+                    DepartmentId = d.Doctor!.DepartmentId,
+                    DoctorId = d.DoctorId,
+                    PatientId = d.PatientId
+
+
                 }).FirstOrDefault();
             }
             catch { }
@@ -67,19 +75,34 @@ namespace Hospital.Controllers
 
             try
             {
-
-                var dbObj = _context.Appointment.FirstOrDefault(d => d.Id == model.Id);
-                if (dbObj == null)
+                if (((model.AppointmentDate.Minute == 0 || model.AppointmentDate.Minute == 30) && (model.AppointmentDate.Hour > 09 && model.AppointmentDate.Hour <20)) && model.AppointmentDate > DateTime.Now)
                 {
-                    dbObj = new Appointment();
-                    _context.Appointment.Add(dbObj);
+                    var dbObj = _context.Appointment
+                                    .Where(d => d.DoctorId == model.DoctorId && model.AppointmentDate == d.AppointmentDate)
+                                    .FirstOrDefault();
+                    //  var dbObj = _context.Appointment.FirstOrDefault(d => d.Id == model.Id);
+                    if (dbObj == null)
+                    {
+                        dbObj = new Appointment();
+                        _context.Appointment.Add(dbObj);
+                    }
+                    else
+                    {
+                        result.Result = false;
+                        return result;
+                    }
+
+                    model.MapTo(dbObj);
+
+                    _context.SaveChanges();
+                    result.Result = true;
+                    result.RecordId = dbObj.Id;
+                }
+                else{
+                    result.Result = false;
+                    result.ErrorMessage = "";
                 }
 
-                model.MapTo(dbObj);
-
-                _context.SaveChanges();
-                result.Result = true;
-                result.RecordId = dbObj.Id;
             }
             catch (System.Exception ex)
             {
@@ -162,7 +185,7 @@ namespace Hospital.Controllers
                     _context.SaveChanges();
                     return Ok(new { success = true });
                 }
-                return NotFound(new {error = "Appointment not found", message = "null object"});
+                return NotFound(new { error = "Appointment not found", message = "null object" });
 
 
             }
@@ -197,8 +220,25 @@ namespace Hospital.Controllers
 
         }
 
-        
-         
+        [HttpGet("Appointment-Future")]
+        public IActionResult GetFutureAppointment()
+        {   
+            var time = DateTime.UtcNow.AddHours(3);
+            var appointment = _context.Appointment
+            .Where(a=> a.AppointmentDate > time)
+            .Select(a=> new{
+                
+                a.AppointmentDate,
+                a.Status,
+                a.Cancel,
+                a.Doctor,
+                a.Doctor.Department
+
+            }).ToList();
+
+            return Ok(appointment);
+        }
+
 
 
 

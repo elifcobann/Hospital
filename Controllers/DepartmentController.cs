@@ -9,7 +9,7 @@ using Hospital.Models.Operational;
 
 namespace Hospital.Controllers{
     [ApiController]
-    [Route("{controller}")]
+    [Route("[controller]")]
 
     public class DepartmentController : SaControllerBase {
         public DepartmentController(HospitalSchema context): base(context){}
