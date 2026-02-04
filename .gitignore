@@ -1,0 +1,8 @@
+bin/
+obj/
+*.user
+*.suo
+*.sln.docstates
+.vscode/
+build_output.txt
+exit_code.txt

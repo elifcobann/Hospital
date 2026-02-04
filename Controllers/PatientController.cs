@@ -6,6 +6,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Cors;
 using Hospital.Helpers;
 using Hospital.Models.Operational;
+using Microsoft.EntityFrameworkCore;
 
 namespace Hospital.Controllers
 {
@@ -16,16 +17,18 @@ namespace Hospital.Controllers
         public PatientController(HospitalSchema context) : base(context) { }
 
         [HttpGet]
-        public IEnumerable<PatientModel> Get()
+        public async Task<IEnumerable<PatientModel>> Get()
         {
             PatientModel[] data = new PatientModel[0];
             try
             {
-                data = _context.Patient.Select(d => new PatientModel
-                {
-                    Id = d.Id,
-                    PatientName = d.PatientName,            //_contextten sonrasını userdan alsa olur mu
-                }).ToArray();
+                data = await _context.Patient
+                    .AsNoTracking()
+                    .Select(d => new PatientModel
+                    {
+                        Id = d.Id,
+                        PatientName = d.PatientName,            //_contextten sonrasını userdan alsa olur mu
+                    }).ToArrayAsync();
 
             }
             catch { }
@@ -33,34 +36,34 @@ namespace Hospital.Controllers
         }
 
         [HttpGet]
-        [Route("id")]
-
-
-        public PatientModel GetbyId(int id)
+        [Route("{id}")]
+        public async Task<PatientModel?> GetbyId(int id)
         {
 
             PatientModel? data = new PatientModel();
             try
             {
-                data = _context.Patient.Where(y => y.Id == id).Select(d => new PatientModel
-                {
-                    Id = d.Id,
-                    PatientName = d.PatientName,
-                }).FirstOrDefault();
+                data = await _context.Patient
+                    .AsNoTracking()
+                    .Where(y => y.Id == id).Select(d => new PatientModel
+                    {
+                        Id = d.Id,
+                        PatientName = d.PatientName,
+                    }).FirstOrDefaultAsync();
             }
             catch { }
             return data;
         }
 
         [HttpPost]
-        public BusinessResult Post(PatientModel model)
+        public async Task<BusinessResult> Post(PatientModel model)
         {
             BusinessResult result = new BusinessResult();
 
             try
             {
 
-                var dbObj = _context.Patient.FirstOrDefault(d => d.Id == model.Id);
+                var dbObj = await _context.Patient.FirstOrDefaultAsync(d => d.Id == model.Id);
                 if (dbObj == null)
                 {
                     dbObj = new Patient();
@@ -69,7 +72,7 @@ namespace Hospital.Controllers
 
                 model.MapTo(dbObj);
 
-                _context.SaveChanges();
+                await _context.SaveChangesAsync();
                 result.Result = true;
                 result.RecordId = dbObj.Id;
             }
@@ -108,13 +111,15 @@ namespace Hospital.Controllers
 
         [HttpPost]
         [Route("Login")]
-        public BusinessResult LoginPost(PatientModel model)
+        public async Task<BusinessResult> LoginPost(PatientModel model)
         {
             BusinessResult result = new BusinessResult();
 
             try
             {
-                var dbObj = _context.Patient.FirstOrDefault(d => d.PatientName == model.PatientName && d.Password == model.Password);
+                var dbObj = await _context.Patient
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(d => d.PatientName == model.PatientName && d.Password == model.Password);
                 if (dbObj == null)
                 {
                     result.Result = false;
