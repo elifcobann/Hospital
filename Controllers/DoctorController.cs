@@ -6,6 +6,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Cors;
 using Hospital.Helpers;
 using Hospital.Models.Operational;
+using Microsoft.EntityFrameworkCore;
 
 namespace Hospital.Controllers
 {
@@ -19,16 +20,18 @@ namespace Hospital.Controllers
         public DoctorController(HospitalSchema context) : base(context) { }
 
         [HttpGet]
-        public IEnumerable<DoctorModel> Get()
+        public async Task<IEnumerable<DoctorModel>> Get()
         {
             DoctorModel[] data = new DoctorModel[0];
             try
             {
-                data = _context.Doctor.Select(d => new DoctorModel
-                {
-                    Id = d.Id,
-                    DoctorName = d.DoctorName,
-                }).OrderBy(d => d.Id).ToArray();
+                data = await _context.Doctor
+                    .AsNoTracking()
+                    .Select(d => new DoctorModel
+                    {
+                        Id = d.Id,
+                        DoctorName = d.DoctorName,
+                    }).OrderBy(d => d.Id).ToArrayAsync();
             }
             catch { }
             return data;
@@ -37,17 +40,19 @@ namespace Hospital.Controllers
         [HttpGet]
         [Route("{id}")]
 
-        public DoctorModel GetbyId(int id)
+        public async Task<DoctorModel?> GetbyId(int id)
         {
 
             DoctorModel? data = new DoctorModel();
             try
             {
-                data = _context.Doctor.Where(y => y.Id == id).Select(d => new DoctorModel
-                {
-                    Id = d.Id,
-                    DoctorName = d.DoctorName,
-                }).FirstOrDefault();
+                data = await _context.Doctor
+                    .AsNoTracking()
+                    .Where(y => y.Id == id).Select(d => new DoctorModel
+                    {
+                        Id = d.Id,
+                        DoctorName = d.DoctorName,
+                    }).FirstOrDefaultAsync();
             }
             catch { }
             return data;
@@ -55,14 +60,14 @@ namespace Hospital.Controllers
         }
 
         [HttpPost]
-        public BusinessResult Post(DoctorModel model)
+        public async Task<BusinessResult> Post(DoctorModel model)
         {
             BusinessResult result = new BusinessResult();
 
             try
             {
 
-                var dbObj = _context.Doctor.FirstOrDefault(d => d.Id == model.Id);
+                var dbObj = await _context.Doctor.FirstOrDefaultAsync(d => d.Id == model.Id);
                 if (dbObj == null)
                 {
                     dbObj = new Doctor();
@@ -71,7 +76,7 @@ namespace Hospital.Controllers
 
                 model.MapTo(dbObj);
 
-                _context.SaveChanges();
+                await _context.SaveChangesAsync();
                 result.Result = true;
                 result.RecordId = dbObj.Id;
             }
@@ -87,13 +92,15 @@ namespace Hospital.Controllers
 
         [HttpPost]
         [Route("Login")]
-        public BusinessResult LoginPost(DoctorModel model)
+        public async Task<BusinessResult> LoginPost(DoctorModel model)
         {
             BusinessResult result = new BusinessResult();
 
             try
             {
-                var dbObj = _context.Doctor.FirstOrDefault(d => d.DoctorName == model.DoctorName && d.Password == model.Password);
+                var dbObj = await _context.Doctor
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(d => d.DoctorName == model.DoctorName && d.Password == model.Password);
                 if (dbObj == null)
                 {
                     result.Result = false;
@@ -141,30 +148,30 @@ namespace Hospital.Controllers
 
         [HttpPost("scoring-doctor/{AppointmentId}/{ScoreNum}")]
 
-        public IActionResult ScoringDoctor(int AppointmentId, int ScoreNum)
-        {   
+        public async Task<IActionResult> ScoringDoctor(int AppointmentId, int ScoreNum)
+        {
             var today = DateTime.Now;
-            var app = _context.Appointment
+            var app = await _context.Appointment
             .Where(d => d.Id == AppointmentId && d.AppointmentDate < today)
-            .FirstOrDefault();
+            .FirstOrDefaultAsync();
 
             if (app == null)
             {
                 return NotFound("Appointment not found.");
             }
-            
-            var doctor = _context.Doctor
+
+            var doctor = await _context.Doctor
             .Where(a => a.Id == app!.DoctorId)
-            .FirstOrDefault();
+            .FirstOrDefaultAsync();
 
             if (doctor == null)
             {
                 return NotFound("Doctor not found.");
             }
 
-            var patient = _context.Patient
+            var patient = await _context.Patient
             .Where(d => d.Id == app!.PatientId)
-            .FirstOrDefault();
+            .FirstOrDefaultAsync();
 
             if (patient == null)
             {
@@ -180,8 +187,8 @@ namespace Hospital.Controllers
 
             };
 
-            _context.Score.Add(score);
-            _context.SaveChanges();
+            await _context.Score.AddAsync(score);
+            await _context.SaveChangesAsync();
 
             return Ok("Score başarıyla kaydedildi.");
 
@@ -190,16 +197,17 @@ namespace Hospital.Controllers
 
         [HttpGet("average-doctor/{DoctorId}")]
 
-        public IActionResult AverageDoctor(int DoctorId)
+        public async Task<IActionResult> AverageDoctor(int DoctorId)
         {
             var average = 0.0;
-            var score = _context.Score
-            .Where(d => d.DoctorId == DoctorId)
-            .ToArray();
-            if (score.Length > 0)
+            try
             {
-                average = score.Average(s => s.ScoreNum);
+                average = await _context.Score
+                    .AsNoTracking()
+                    .Where(d => d.DoctorId == DoctorId)
+                    .AverageAsync(s => (double?)s.ScoreNum) ?? 0.0;
             }
+            catch { }
 
             return Ok(new { AverageScore = average });
         }

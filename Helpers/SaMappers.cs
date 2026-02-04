@@ -1,13 +1,19 @@
 using AutoMapper;
+using System.Collections.Concurrent;
 
 namespace Hospital.Helpers {
     public static class SaMappers {
+        private static readonly ConcurrentDictionary<(Type, Type), IMapper> _mappers = new();
+
         public static V MapTo<T,V>(this T from, V to){
-            var config = new MapperConfiguration(config => {
-                config.CreateMap<T,V>();
+            var key = (typeof(T), typeof(V));
+            var iMapper = _mappers.GetOrAdd(key, _ => {
+                var config = new MapperConfiguration(cfg => {
+                    cfg.CreateMap<T, V>();
+                });
+                return config.CreateMapper();
             });
 
-            IMapper iMapper = config.CreateMapper();
             iMapper.Map<T,V>(from,to);
             return to;
         }

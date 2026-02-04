@@ -11,6 +11,7 @@ using System.Linq.Expressions;
 using AutoMapper.Configuration.Annotations;
 using System.Globalization;
 using Microsoft.OpenApi.Validations;
+using Microsoft.EntityFrameworkCore;
 
 namespace Hospital.Controllers
 {
@@ -22,65 +23,67 @@ namespace Hospital.Controllers
         public AppointmentController(HospitalSchema context) : base(context) { }
 
         [HttpGet]
-        public IEnumerable<AppointmentModel> Get()
+        public async Task<IEnumerable<AppointmentModel>> Get()
         {
-            AppointmentModel[] data = new AppointmentModel[0];
             try
             {
-                data = _context.Appointment.Select(d => new AppointmentModel
-                {
-                    Id = d.Id,
-                    AppointmentDate = d.AppointmentDate,
-                    Status = d.Status,
-                    Cancel = d.Cancel,
-                    DepartmentId = d.Doctor!.DepartmentId,
-                    DoctorId = d.DoctorId,
-                    PatientId = d.PatientId
-                }).ToArray();
+                return await _context.Appointment
+                    .AsNoTracking()
+                    .Select(d => new AppointmentModel
+                    {
+                        Id = d.Id,
+                        AppointmentDate = d.AppointmentDate,
+                        Status = d.Status,
+                        Cancel = d.Cancel,
+                        DepartmentId = d.Doctor!.DepartmentId,
+                        DoctorId = d.DoctorId,
+                        PatientId = d.PatientId
+                    }).ToArrayAsync();
             }
-            catch { }
-            return data;
+            catch
+            {
+                return Array.Empty<AppointmentModel>();
+            }
         }
 
         [HttpGet]
         [Route("{id}")]
 
-        public AppointmentModel GetbyId(int id)
+        public async Task<AppointmentModel?> GetbyId(int id)
         {
-
-            AppointmentModel? data = new AppointmentModel();
             try
             {
-                data = _context.Appointment.Where(y => y.Id == id).Select(d => new AppointmentModel
-                {
-                    Id = d.Id,
-                    AppointmentDate = d.AppointmentDate,
-                    Status = d.Status,
-                    DepartmentId = d.Doctor!.DepartmentId,
-                    DoctorId = d.DoctorId,
-                    PatientId = d.PatientId
-
-
-                }).FirstOrDefault();
+                return await _context.Appointment
+                    .AsNoTracking()
+                    .Where(y => y.Id == id).Select(d => new AppointmentModel
+                    {
+                        Id = d.Id,
+                        AppointmentDate = d.AppointmentDate,
+                        Status = d.Status,
+                        DepartmentId = d.Doctor!.DepartmentId,
+                        DoctorId = d.DoctorId,
+                        PatientId = d.PatientId
+                    }).FirstOrDefaultAsync();
             }
-            catch { }
-            return data;
-
+            catch
+            {
+                return null;
+            }
         }
 
         [HttpPost]
-        public BusinessResult Post(AppointmentModel model)
+        public async Task<BusinessResult> Post(AppointmentModel model)
         {
             BusinessResult result = new BusinessResult();
 
             try
             {
-                if (((model.AppointmentDate.Minute == 0 || model.AppointmentDate.Minute == 30) && (model.AppointmentDate.Hour > 09 && model.AppointmentDate.Hour <20)) && model.AppointmentDate > DateTime.Now)
+                if (((model.AppointmentDate.Minute == 0 || model.AppointmentDate.Minute == 30) && (model.AppointmentDate.Hour > 09 && model.AppointmentDate.Hour < 20)) && model.AppointmentDate > DateTime.Now)
                 {
-                    var dbObj = _context.Appointment
+                    var dbObj = await _context.Appointment
                                     .Where(d => d.DoctorId == model.DoctorId && model.AppointmentDate == d.AppointmentDate)
-                                    .FirstOrDefault();
-                    //  var dbObj = _context.Appointment.FirstOrDefault(d => d.Id == model.Id);
+                                    .FirstOrDefaultAsync();
+
                     if (dbObj == null)
                     {
                         dbObj = new Appointment();
@@ -94,13 +97,14 @@ namespace Hospital.Controllers
 
                     model.MapTo(dbObj);
 
-                    _context.SaveChanges();
+                    await _context.SaveChangesAsync();
                     result.Result = true;
                     result.RecordId = dbObj.Id;
                 }
-                else{
+                else
+                {
                     result.Result = false;
-                    result.ErrorMessage = "";
+                    result.ErrorMessage = "Invalid appointment time.";
                 }
 
             }
@@ -142,9 +146,10 @@ namespace Hospital.Controllers
 
 
         [HttpGet("patient-appointments/{patientId}")]
-        public IActionResult GetPatientAppointments(int patientId)
+        public async Task<IActionResult> GetPatientAppointments(int patientId)
         {
-            var appointments = _context.Appointment
+            var appointments = await _context.Appointment
+           .AsNoTracking()
            .Where(a => a.PatientId == patientId)
            .Select(a => new
            {
@@ -153,7 +158,7 @@ namespace Hospital.Controllers
                a.Status,
                a.Cancel
            })
-           .ToList();
+           .ToListAsync();
 
             if (appointments.Any())
             {
@@ -169,20 +174,19 @@ namespace Hospital.Controllers
 
 
         [HttpPut("check-appointment/{PatientId}/{AppointmentId}")]
-        public IActionResult CheckAppointment(int PatientId, int AppointmentId)
+        public async Task<IActionResult> CheckAppointment(int PatientId, int AppointmentId)
         {
             try
             {
                 var today = DateTime.UtcNow;
-                var appointment = _context.Appointment
-                 //.Where(a => a.PatientId == PatientId && a.Id == AppointmentId && a.AppointmentDate > today && a.Status == false)
+                var appointment = await _context.Appointment
                  .Where(a => a.Id == AppointmentId && a.Status == false && a.AppointmentDate > today)
-                 .FirstOrDefault();
+                 .FirstOrDefaultAsync();
 
                 if (appointment != null)
                 {
                     appointment.Status = true; // Randevuyu onayla
-                    _context.SaveChanges();
+                    await _context.SaveChangesAsync();
                     return Ok(new { success = true });
                 }
                 return NotFound(new { error = "Appointment not found", message = "null object" });
@@ -191,7 +195,6 @@ namespace Hospital.Controllers
             }
             catch (Exception ex)
             {
-                // Log the exception (optional)
                 return Ok(new { error = "Internal server error", message = ex.Message });
             }
 
@@ -199,9 +202,9 @@ namespace Hospital.Controllers
 
 
         [HttpPost("cancel-appointment/{AppointmentId}")]
-        public IActionResult CancelAppointment(int appointmentId)
+        public async Task<IActionResult> CancelAppointment(int AppointmentId)
         {
-            var appointment = _context.Appointment.Find(appointmentId);
+            var appointment = await _context.Appointment.FindAsync(AppointmentId);
             if (appointment == null)
             {
                 return NotFound(new { success = false, message = "Appointment not found." });
@@ -209,11 +212,8 @@ namespace Hospital.Controllers
             }
             else
             {
-
-
                 appointment.Cancel = true;
-                _context.SaveChanges();
-
+                await _context.SaveChangesAsync();
             }
 
             return Ok(new { success = true, message = "Appointment cancelled successfully." });
@@ -221,31 +221,24 @@ namespace Hospital.Controllers
         }
 
         [HttpGet("Appointment-Future")]
-        public IActionResult GetFutureAppointment()
-        {   
+        public async Task<IActionResult> GetFutureAppointment()
+        {
             var time = DateTime.UtcNow.AddHours(3);
-            var appointment = _context.Appointment
-            .Where(a=> a.AppointmentDate > time)
-            .Select(a=> new{
-                
+            var appointment = await _context.Appointment
+            .AsNoTracking()
+            .Where(a => a.AppointmentDate > time)
+            .Select(a => new
+            {
                 a.AppointmentDate,
                 a.Status,
                 a.Cancel,
                 a.Doctor,
-                a.Doctor.Department
-
-            }).ToList();
+                a.Doctor!.Department
+            }).ToListAsync();
 
             return Ok(appointment);
         }
 
-
-
-
     }
 
 }
-
-
-
-
